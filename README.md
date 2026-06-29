@@ -20,10 +20,10 @@ Markdown tables are great until you add one cell that's longer than the others a
 
 **Before:**
 ```
-| Name | Age | City |
-|-----|:---:|---:|
-| Froggy | 47 | London |
-| Spencer Batwick | 52 | Hedgerow Lane |
+| Name            | Age |          City |
+|-----------------|:---:|--------------:|
+| Froggy          | 47  |        London |
+| Spencer Batwick | 52  | Hedgerow Lane |
 ```
 
 **After:**

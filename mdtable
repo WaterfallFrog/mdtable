@@ -150,9 +150,11 @@ def process_markdown(text):
         table = parse_table(lines, i)
         if table:
             header, sep, rows, end = table
+            original_block = '\n'.join([header, sep] + rows)
             formatted = format_table(header, sep, rows)
+            if '\n'.join(formatted) != original_block:
+                changes += 1
             result.extend(formatted)
-            changes += 1
             i = end
         else:
             result.append(lines[i])
