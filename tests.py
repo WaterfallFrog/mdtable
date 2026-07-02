@@ -269,6 +269,69 @@ def test_stdout_does_not_modify_file():
         os.unlink(tmp)
 
 
+# ── New v1.3 features: --format csv ──
+
+def test_csv_format_basic():
+    """--format csv produces correct CSV with header."""
+    text = "| A | B |\n|---|---|\n| 1 | 2 |\n"
+    result = mdt.format_all_tables_as_csv(text)
+    lines = result.strip().split('\n')
+    assert lines[0] == "A,B", f"Header should be A,B got: {lines[0]}"
+    assert lines[1] == "1,2", f"Data should be 1,2 got: {lines[1]}"
+    return True
+
+
+def test_csv_format_no_headers():
+    """--no-headers omits the CSV header row."""
+    text = "| A | B |\n|---|---|\n| 1 | 2 |\n"
+    result = mdt.format_all_tables_as_csv(text, no_headers=True)
+    lines = result.strip().split('\n')
+    assert lines[0] == "1,2", f"First line should be data, got: {lines[0]}"
+    assert len(lines) == 1, "Should only have data row"
+    return True
+
+
+def test_csv_format_quoting():
+    """Cells with commas should be quoted."""
+    text = "| Name | Value |\n|---|---|\n| hello, world | 42 |\n"
+    result = mdt.format_all_tables_as_csv(text)
+    assert '"hello, world"' in result, "Comma cell should be quoted"
+    return True
+
+
+def test_csv_format_quote_escape():
+    """Double-quotes in cells should be escaped."""
+    text = '| Name |\n|---|\n| says "hello" |\n'
+    result = mdt.format_all_tables_as_csv(text)
+    assert '""hello""' in result, "Quotes should be doubled"
+    return True
+
+
+def test_csv_format_multiple_tables():
+    """Multiple tables separated by blank lines."""
+    text = "| X |\n|---|\n| 1 |\n\nBlah\n\n| Y | Z |\n|---|---|\n| a | b |\n"
+    result = mdt.format_all_tables_as_csv(text)
+    blocks = result.strip().split('\n\n')
+    assert len(blocks) == 2, f"Should have 2 blocks, got {len(blocks)}"
+    return True
+
+
+def test_csv_format_no_tables():
+    """No tables produces empty string."""
+    result = mdt.format_all_tables_as_csv("Just text.\n\nNo tables.\n")
+    assert result.strip() == '', "Should be empty for no tables"
+    return True
+
+
+def test_csv_format_custom_delimiter():
+    """--csv-delimiter uses custom separator."""
+    text = "| A | B |\n|---|---|\n| 1 | 2 |\n"
+    result = mdt.format_all_tables_as_csv(text, delimiter='|')
+    lines = result.strip().split('\n')
+    assert lines[0] == "A|B", f"Pipe-delimited header, got: {lines[0]}"
+    return True
+
+
 # ── Run tests ──
 
 TESTS = [
@@ -297,6 +360,13 @@ TESTS = [
     ("--format json: no tables", test_json_format_no_tables),
     ("--format json: alignments", test_json_format_alignments),
     ("--stdout: does not modify file", test_stdout_does_not_modify_file),
+    ("--format csv: basic", test_csv_format_basic),
+    ("--format csv: no-headers", test_csv_format_no_headers),
+    ("--format csv: quoting", test_csv_format_quoting),
+    ("--format csv: quote escape", test_csv_format_quote_escape),
+    ("--format csv: multiple tables", test_csv_format_multiple_tables),
+    ("--format csv: no tables", test_csv_format_no_tables),
+    ("--format csv: custom delimiter", test_csv_format_custom_delimiter),
 ]
 
 print(f"mdtable v{mdt.VERSION} — Test Suite")
