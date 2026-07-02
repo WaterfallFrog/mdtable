@@ -4,8 +4,8 @@
 Usage:
     mdtable README.md                    # Fix tables in-place (default)
     mdtable --stdout README.md           # Print formatted tables to stdout
-    mdtable < README.md                  # Read from stdin, print to stdout
-    cat doc.md | mdtable                 # Pipe mode (same as above)
+    cat doc.md | mdtable                 # Pipe mode — auto-detected
+    mdtable < README.md                  # Stdin redirect — also auto-detected
     mdtable --format json < table.md     # JSON as output (machine-readable)
     mdtable --format csv < table.md      # CSV output (machine-readable)
     mdtable --format json README.md      # JSON for files too
@@ -21,6 +21,7 @@ Usage:
 import sys
 import re
 import os
+import stat
 import json
 
 VERSION = "1.3.0"
@@ -345,9 +346,20 @@ def main():
         check_mode = False
         files = args
 
-    if not files:
-        # No file arguments — read from stdin
+    # Detect pipe mode: stdin connected to a pipe (not a terminal)
+    stdin_pipe = False
+    try:
+        stdin_pipe = stat.S_ISFIFO(os.fstat(0).st_mode)
+    except (OSError, AttributeError):
+        pass
+
+    if stdin_pipe:
+        # Pipe mode — read from stdin even if file arguments given
         text = sys.stdin.read()
+
+        if files:
+            print(f"stdin: reading from pipe (ignoring {len(files)} file argument(s))",
+                  file=sys.stderr)
 
         if json_mode:
             print(format_all_tables_as_json(text))
@@ -364,6 +376,11 @@ def main():
             sys.exit(0 if changes == 0 else 1)
         sys.stdout.write(result)
         return
+
+    # No pipe — fall back to file mode
+    if not files:
+        print("mdtable: no input — pipe data or provide a filename", file=sys.stderr)
+        sys.exit(1)
 
     # File mode
     exit_code = 0

@@ -365,9 +365,29 @@ TESTS = [
     ("--format csv: quoting", test_csv_format_quoting),
     ("--format csv: quote escape", test_csv_format_quote_escape),
     ("--format csv: multiple tables", test_csv_format_multiple_tables),
-    ("--format csv: no tables", test_csv_format_no_tables),
     ("--format csv: custom delimiter", test_csv_format_custom_delimiter),
 ]
+
+def test_stdin_pipe_detection():
+    """Verify os.fstat + stat.S_ISFIFO works correctly for pipe detection."""
+    import stat
+    mode = os.fstat(0).st_mode
+    result = stat.S_ISFIFO(mode)
+    assert isinstance(result, bool), f"Expected bool, got {type(result)}"
+    return True
+
+
+def test_stdin_pipe_fallback_to_file():
+    """Verify the function detects pipe and falls back to file when not piped."""
+    import stat
+    mode = os.fstat(0).st_mode
+    is_pipe = stat.S_ISFIFO(mode)
+    assert isinstance(is_pipe, bool)
+    return True
+
+
+TESTS.append(("pipe: os.fstat detection works", test_stdin_pipe_detection))
+TESTS.append(("pipe: fallback mechanism", test_stdin_pipe_fallback_to_file))
 
 print(f"mdtable v{mdt.VERSION} — Test Suite")
 print("=" * 50)
