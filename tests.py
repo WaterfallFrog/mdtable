@@ -386,8 +386,50 @@ def test_stdin_pipe_fallback_to_file():
     return True
 
 
+# ── --check flag (CI validation) ──
+
+def test_check_detects_needs_formatting_file():
+    """--check exits 1 when tables in a file need formatting."""
+    content = "| A | B |\n|---|---|\n| 1 | 2 |\n"
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        f.write(content)
+        f.flush()
+        tmp = f.name
+    try:
+        result, changes = mdt.process_markdown(content)
+        assert changes > 0, "Should detect needed formatting"
+        return True
+    finally:
+        os.unlink(tmp)
+
+
+def test_check_passes_already_formatted():
+    """--check exits 0 when tables are already neat."""
+    text = "| A   | B   |\n|-----|-----|\n| 1   | 2   |\n"
+    result, changes = mdt.process_markdown(text)
+    return changes == 0
+
+
+def test_check_no_tables():
+    """--check exits 0 when no tables present at all."""
+    result, changes = mdt.process_markdown("Just text.\n\nNo tables here.\n")
+    return changes == 0
+
+
+def test_check_multi_table():
+    """--check detects formatting needed in multi-table documents."""
+    text = "| X |\n|---|\n| 1 |\n\n| A | B |\n|---|---|\n| 1 | 2 |\n"
+    result, changes = mdt.process_markdown(text)
+    # At least one table should need formatting
+    return changes >= 1
+
+
 TESTS.append(("pipe: os.fstat detection works", test_stdin_pipe_detection))
 TESTS.append(("pipe: fallback mechanism", test_stdin_pipe_fallback_to_file))
+TESTS.append(("--check: detects needs formatting (file)", test_check_detects_needs_formatting_file))
+TESTS.append(("--check: passes already formatted", test_check_passes_already_formatted))
+TESTS.append(("--check: passes no tables", test_check_no_tables))
+TESTS.append(("--check: multi-table detection", test_check_multi_table))
 
 print(f"mdtable v{mdt.VERSION} — Test Suite")
 print("=" * 50)
