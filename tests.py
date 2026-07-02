@@ -6,6 +6,7 @@ Run: python3 tests.py
 
 import sys
 import os
+import json
 import tempfile
 
 # Add parent to path so we can import mdtable as a module
@@ -193,6 +194,81 @@ def test_file_mode():
         os.unlink(tmp)
 
 
+# ── New v1.2 features: --format json ──
+
+def test_json_format_basic():
+    """--format json produces valid JSON with correct structure."""
+    text = "| A | B |\n|---|---|\n| 1 | 2 |\n"
+    result = mdt.format_all_tables_as_json(text)
+    data = json.loads(result)
+    assert isinstance(data, list), "Should be a list"
+    assert len(data) == 1, "Should have one table"
+    t = data[0]
+    assert t["format"] == "markdown_table"
+    assert t["col_count"] == 2
+    assert t["row_count"] == 1
+    assert t["total_row_count"] == 2
+    assert t["columns"] == ["A", "B"]
+    assert t["rows"] == [["1", "2"]]
+    assert t["alignments"] == ["left", "left"]
+    return True
+
+
+def test_json_format_multiple_tables():
+    """--format json handles multiple tables."""
+    text = "| X |\n|---|\n| 1 |\n\nBlah\n\n| Y | Z |\n|---|---|\n| a | b |\n"
+    result = mdt.format_all_tables_as_json(text)
+    data = json.loads(result)
+    assert len(data) == 2, "Should have two tables"
+    assert data[0]["col_count"] == 1
+    assert data[0]["columns"] == ["X"]
+    assert data[1]["col_count"] == 2
+    assert data[1]["columns"] == ["Y", "Z"]
+    return True
+
+
+def test_json_format_no_tables():
+    """--format json on text with no tables returns empty array."""
+    result = mdt.format_all_tables_as_json("Just text.\n\nNo tables.\n")
+    data = json.loads(result)
+    assert data == [], "Should be empty array"
+    return True
+
+
+def test_json_format_alignments():
+    """--format json preserves alignment info."""
+    text = "| A | B | C |\n|:---|---:|:---:|\n| 1 | 2 | 3 |\n"
+    result = mdt.format_all_tables_as_json(text)
+    data = json.loads(result)
+    assert data[0]["alignments"] == ["left", "right", "center"]
+    return True
+
+
+# ── New v1.2 features: --stdout ──
+
+def test_stdout_does_not_modify_file():
+    """--stdout leaves the file unchanged."""
+    content = "| X | Y |\n|---|---|\n| a | bbb |\n"
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        f.write(content)
+        f.flush()
+        tmp = f.name
+
+    try:
+        # Read and process without writing
+        with open(tmp) as f:
+            text = f.read()
+        result, changes = mdt.process_markdown(text)
+        # File should still have original content
+        with open(tmp) as f:
+            after = f.read()
+        assert after == content, "File should be unchanged with --stdout"
+        assert changes > 0, "Should detect changes needed"
+        return True
+    finally:
+        os.unlink(tmp)
+
+
 # ── Run tests ──
 
 TESTS = [
@@ -216,6 +292,11 @@ TESTS = [
     ("process: multiple tables", test_process_multiple_tables),
     ("process: table in list context", test_process_table_in_list),
     ("integration: file mode", test_file_mode),
+    ("--format json: basic", test_json_format_basic),
+    ("--format json: multiple tables", test_json_format_multiple_tables),
+    ("--format json: no tables", test_json_format_no_tables),
+    ("--format json: alignments", test_json_format_alignments),
+    ("--stdout: does not modify file", test_stdout_does_not_modify_file),
 ]
 
 print(f"mdtable v{mdt.VERSION} — Test Suite")
