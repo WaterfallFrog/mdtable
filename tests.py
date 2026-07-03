@@ -431,6 +431,108 @@ TESTS.append(("--check: passes already formatted", test_check_passes_already_for
 TESTS.append(("--check: passes no tables", test_check_no_tables))
 TESTS.append(("--check: multi-table detection", test_check_multi_table))
 
+# ── New v1.4 features: --to github ──
+
+
+def test_github_blank_lines_around_table():
+    """--to github adds blank lines around a table without them."""
+    text = "Some text\n| A | B |\n|---|---|\n| 1 | 2 |\nMore text\n"
+    result, changes, warnings = mdt.format_all_tables_as_github(text)
+    lines = result.split('\n')
+    # Should have blank line before and after the table
+    assert lines[0] == "Some text"
+    assert lines[1] == ""
+    assert lines[2].startswith("|")
+    assert " A " in lines[2]
+    assert "---" in lines[3]
+    assert " 1 " in lines[4]
+    assert lines[5] == ""
+    assert lines[6] == "More text"
+    return changes >= 1
+
+
+def test_github_blank_lines_no_duplicate():
+    """--to github doesn't add duplicate blank lines when already present."""
+    text = "Some text\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nMore text\n"
+    result, changes, warnings = mdt.format_all_tables_as_github(text)
+    lines = result.split('\n')
+    # Should have exactly one blank line before and after, not two
+    assert lines[0] == "Some text"
+    assert lines[1] == ""
+    assert lines[2].startswith("|")
+    # Find where "More text" appears
+    mt_idx = [i for i, l in enumerate(lines) if l == "More text"]
+    assert len(mt_idx) == 1
+    # Line before "More text" should be blank
+    assert lines[mt_idx[0] - 1] == ""
+    return True
+
+
+def test_github_table_at_start_of_file():
+    """--to github handles table right at the start of a file."""
+    text = "| A | B |\n|---|---|\n| 1 | 2 |\n"
+    result, changes, warnings = mdt.format_all_tables_as_github(text)
+    lines = result.split('\n')
+    # First line should be the table header (no blank line needed at start)
+    assert " A " in lines[0]
+    # Last non-empty should be table, no trailing blank needed at end of file
+    assert " 1 " in [l for l in lines if l][-1]
+    return True
+
+
+def test_github_table_at_end_of_file():
+    """--to github handles table at file end without trailing blank line."""
+    text = "Some text\n\n| A | B |\n|---|---|\n| 1 | 2 |"
+    result, changes, warnings = mdt.format_all_tables_as_github(text)
+    lines = result.split('\n')
+    assert lines[0] == "Some text"
+    # Line before table is blank
+    assert lines[1] == ""
+    # Table starts
+    assert " A " in lines[2]
+    # File should end with newline
+    assert result.endswith('\n')
+    return True
+
+
+def test_github_no_tables():
+    """--to github on text with no tables passes through unchanged."""
+    text = "Just some text.\n\nNo tables here.\n"
+    result, changes, warnings = mdt.format_all_tables_as_github(text)
+    return result == text and changes == 0 and warnings == []
+
+
+def test_github_no_warnings_clean_table():
+    """--to github on clean tables produces no warnings."""
+    text = "| A | B |\n|---|---|\n| 1 | 2 |\n"
+    result, changes, warnings = mdt.format_all_tables_as_github(text)
+    return warnings == []
+
+
+def test_github_multiple_tables():
+    """--to github handles multiple tables, each gets blank lines."""
+    text = "First.\n| X |\n|---|\n| 1 |\nMore.\n| Y | Z |\n|---|---|\n| a | b |\nDone."
+    result, changes, warnings = mdt.format_all_tables_as_github(text)
+    lines = result.split('\n')
+    # Both tables should have blank lines around them
+    assert "\n\n| X " in result
+    assert "\n\n| Y " in result
+    # "More." should be before second table blank line
+    more_idx = [i for i, l in enumerate(lines) if l == "More."]
+    assert len(more_idx) == 1
+    assert lines[more_idx[0] + 1] == ""
+    assert lines[more_idx[0] + 2].startswith("| Y ")
+    return True
+
+
+TESTS.append(("--to github: blank lines around table", test_github_blank_lines_around_table))
+TESTS.append(("--to github: no duplicate blank lines", test_github_blank_lines_no_duplicate))
+TESTS.append(("--to github: table at start of file", test_github_table_at_start_of_file))
+TESTS.append(("--to github: table at end of file", test_github_table_at_end_of_file))
+TESTS.append(("--to github: no tables passthrough", test_github_no_tables))
+TESTS.append(("--to github: no warnings on clean tables", test_github_no_warnings_clean_table))
+TESTS.append(("--to github: multiple tables", test_github_multiple_tables))
+
 print(f"mdtable v{mdt.VERSION} — Test Suite")
 print("=" * 50)
 for name, fn in TESTS:

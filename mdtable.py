@@ -12,6 +12,8 @@ Usage:
     mdtable --format csv README.md       # CSV for files too
     mdtable --format csv --no-headers < t  # CSV without header row
     mdtable --format csv --csv-delimiter '|' < t  # Pipe-delimited output
+    mdtable --to github < file.md        # GitHub-ready markdown (GFM compliance)
+    mdtable --to github README.md        # GitHub-ready markdown for files too
     mdtable --check <file>               # Dry-run: exit 1 if tables need formatting
     mdtable --check < doc.md             # Check on stdin
     mdtable --version                    # Show version
@@ -24,7 +26,7 @@ import os
 import stat
 import json
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 
 def parse_cells(row):
@@ -128,6 +130,9 @@ def format_row(cells, widths, alignments):
     return '| ' + ' | '.join(parts) + ' |'
 
 
+# ── JSON output ──
+
+
 def format_table_json(header, sep, rows):
     """Format table as JSON — machine-readable output.
 
@@ -181,6 +186,9 @@ def format_all_tables_as_json(text):
     return json.dumps(tables, indent=2)
 
 
+# ── CSV output ──
+
+
 def format_table_csv(header, sep, rows, delimiter=',', no_headers=False):
     """Format a table as CSV lines.
 
@@ -223,6 +231,9 @@ def format_all_tables_as_csv(text, delimiter=',', no_headers=False):
         else:
             i += 1
     return '\n\n'.join(blocks) + '\n'
+
+
+# ── Markdown table formatting ──
 
 
 def format_table(header, sep, rows):
@@ -288,12 +299,90 @@ def process_markdown(text):
     return '\n'.join(result), changes
 
 
+# ── GitHub Flavored Markdown output ──
+
+
+def format_all_tables_as_github(text):
+    """Format tables specifically for GitHub Flavored Markdown rendering.
+
+    GitHub requires blank lines before and after every table block
+    to render correctly. This function formats tables and ensures
+    proper GFM spacing.
+
+    Returns (result_text, changes, warnings) where:
+      - result_text: formatted text with GitHub-safe table spacing
+      - changes: number of formatting changes + blank-line insertions
+      - warnings: always empty (reserved for future GFM checks)
+    """
+    # First, format all tables as normal
+    formatted, fmt_changes = process_markdown(text)
+    fmt_lines = formatted.split('\n')
+    warnings = []
+    total_adjustments = fmt_changes
+
+    # Detect which line ranges are tables in the already-formatted output
+    table_ranges = []  # list of (start_idx, end_idx_exclusive)
+    i = 0
+    while i < len(fmt_lines):
+        line = fmt_lines[i]
+        if line.strip().startswith('|') and i + 1 < len(fmt_lines):
+            sep = fmt_lines[i + 1]
+            sep_content = sep.strip().strip('|').strip()
+            if re.match(r'^[\s\-:|]+$', sep_content):
+                start = i
+                i += 2
+                while i < len(fmt_lines) and fmt_lines[i].strip().startswith('|'):
+                    i += 1
+                table_ranges.append((start, i))
+                total_adjustments += 1
+                continue
+        i += 1
+
+    # Build output with blank lines around tables
+    out_lines = []
+    prev_end = 0
+    for tbl_start, tbl_end in table_ranges:
+        # Copy lines before this table
+        for idx in range(prev_end, tbl_start):
+            out_lines.append(fmt_lines[idx])
+
+        # Ensure blank line before table (unless at start of file or already blank)
+        if out_lines and out_lines[-1] != '':
+            out_lines.append('')
+
+        # Copy table lines
+        for idx in range(tbl_start, tbl_end):
+            out_lines.append(fmt_lines[idx])
+
+        # Ensure blank line after table (unless last thing in file)
+        if tbl_end < len(fmt_lines) and fmt_lines[tbl_end] != '':
+            out_lines.append('')
+
+        prev_end = tbl_end
+
+    # Copy remaining lines after last table
+    for idx in range(prev_end, len(fmt_lines)):
+        out_lines.append(fmt_lines[idx])
+
+    result = '\n'.join(out_lines)
+
+    # Ensure file ends with newline
+    if not result.endswith('\n'):
+        result += '\n'
+        total_adjustments += 1
+
+    return result, total_adjustments, warnings
+
+
+# ── Entry point ──
+
+
 def main():
     args = sys.argv[1:]
 
     # Help: explicit --help or -h
     if args and args[0] in ('-h', '--help'):
-        print(__doc__.strip())
+        print((__doc__ or "").strip())
         return
 
     # Version
@@ -301,9 +390,10 @@ def main():
         print(f"mdtable v{VERSION}")
         return
 
-    # Parse --format flag
+    # Parse flags
     csv_mode = False
     json_mode = False
+    github_mode = False
     stdout_mode = False
     no_headers = False
     csv_delimiter = ','
@@ -331,6 +421,15 @@ def main():
             continue
         elif args[i] == '--csv-delimiter' and i + 1 < len(args):
             csv_delimiter = args[i + 1]
+            i += 2
+            continue
+        elif args[i] == '--to' and i + 1 < len(args):
+            target = args[i + 1]
+            if target == 'github':
+                github_mode = True
+            else:
+                print(f"mdtable: unknown target '{target}' (use 'github')", file=sys.stderr)
+                sys.exit(1)
             i += 2
             continue
         else:
@@ -369,6 +468,15 @@ def main():
             print(format_all_tables_as_csv(text, delimiter=csv_delimiter, no_headers=no_headers), end='')
             return
 
+        if github_mode:
+            result, changes, warnings = format_all_tables_as_github(text)
+            sys.stdout.write(result)
+            if changes > 0:
+                print(f"# {changes} change(s) applied", file=sys.stderr)
+            for w in warnings:
+                print(f"# WARNING: {w}", file=sys.stderr)
+            return
+
         result, changes = process_markdown(text)
         if check_mode:
             if changes > 0:
@@ -398,6 +506,17 @@ def main():
 
         if csv_mode:
             print(format_all_tables_as_csv(text, delimiter=csv_delimiter, no_headers=no_headers), end='')
+            continue
+
+        if github_mode:
+            result, changes, warnings = format_all_tables_as_github(text)
+            sys.stdout.write(result)
+            if changes > 0:
+                print(f"# {path}: {changes} change(s) applied", file=sys.stderr)
+            else:
+                print(f"# {path}: no changes needed", file=sys.stderr)
+            for w in warnings:
+                print(f"# WARNING ({path}): {w}", file=sys.stderr)
             continue
 
         result, changes = process_markdown(text)
